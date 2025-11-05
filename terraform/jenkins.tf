@@ -47,6 +47,7 @@ resource "aws_security_group" "jenkins_sg" {
   }
 
   tags = {
+    Name    = "${var.project_name}-jenkins-sg"
     Project = var.project_name
   }
 }
@@ -62,24 +63,19 @@ resource "aws_iam_role" "jenkins_role" {
     Statement = [
       {
         Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
+        Principal = { Service = "ec2.amazonaws.com" }
+        Action    = "sts:AssumeRole"
       }
     ]
   })
 }
 
-# -----------------------------------------------------
-# Attach permissions for ECR, EKS, CloudWatch, and SSM
-# -----------------------------------------------------
+# Attach permissions for ECR, EKS, CloudWatch, and SSM (supported policies)
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-# ✅ Replaced deprecated AmazonEKSReadOnlyAccess with these two
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -90,7 +86,7 @@ resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "jenkins_cw" {
+resource "aws_iam_role_policy_attachment" "jenkins_cloudwatch" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
@@ -122,7 +118,7 @@ data "template_file" "jenkins_userdata" {
 }
 
 # -----------------------------------------------------
-# EC2 Instance for Jenkins
+# EC2 Instance for Jenkins (protected)
 # -----------------------------------------------------
 resource "aws_instance" "jenkins" {
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -133,12 +129,26 @@ resource "aws_instance" "jenkins" {
   iam_instance_profile        = aws_iam_instance_profile.jenkins_profile.name
   user_data                   = data.template_file.jenkins_userdata.rendered
 
+  # Extra safety against console/API termination
+  disable_api_termination = true
+
+  # ===== Protection so 'terraform apply' won't destroy/replace Jenkins =====
+  lifecycle {
+    # Block any destroy (including replacements) unless you temporarily remove this.
+    prevent_destroy = true
+
+    # Avoid unintended replacement when AMI updates or when user_data changes.
+    # (If you *intend* to rotate AMI or userdata, comment these out for that run.)
+    ignore_changes = [
+      ami,
+      user_data
+    ]
+  }
+
   tags = {
     Name    = "${var.project_name}-jenkins"
     Project = var.project_name
   }
-
-  
 }
 
 # -----------------------------------------------------
