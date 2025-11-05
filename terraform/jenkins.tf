@@ -1,0 +1,117 @@
+# Use the VPC/public subnets from your existing VPC module
+# Jenkins goes in a public subnet for MVP (we’ll lock down later).
+
+data "aws_ami" "ubuntu_2204" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+}
+
+resource "aws_security_group" "jenkins_sg" {
+  name        = "${var.project_name}-jenkins-sg"
+  description = "Allow HTTP(8080) and SSH(22) for Jenkins"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "Jenkins UI"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.jenkins_allowed_cidr_http]
+  }
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.jenkins_allowed_cidr_ssh]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Project = var.project_name }
+}
+
+# IAM role for the Jenkins instance (instance profile).
+# Grants ECR push/pull, EKS describe, CloudWatch, and SSM Session Manager (no SSH key required).
+resource "aws_iam_role" "jenkins_role" {
+  name = "${var.project_name}-jenkins-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+# Attach managed policies (MVP-friendly; we’ll tighten later)
+resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_eks_ro" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_cw" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_ssm" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "jenkins_profile" {
+  name = "${var.project_name}-jenkins-profile"
+  role = aws_iam_role.jenkins_role.name
+}
+
+# User data to bootstrap Jenkins non-interactively (plugins, admin, tools)
+data "template_file" "jenkins_userdata" {
+  template = file("${path.module}/userdata/jenkins-bootstrap.sh")
+  vars = {
+    ADMIN_USER      = var.jenkins_admin_username
+    ADMIN_PASS      = var.jenkins_admin_password
+    CREATE_CREDS    = var.create_jenkins_credentials ? "true" : "false"
+    SONAR_TOKEN     = var.sonarcloud_token
+    TFC_TOKEN       = var.tfc_token
+    # Region through env; Jenkins job will also set AWS_REGION
+    AWS_REGION      = var.region
+  }
+}
+
+resource "aws_instance" "jenkins" {
+  ami                         = data.aws_ami.ubuntu_2204.id
+  instance_type               = var.jenkins_instance_type
+  subnet_id                   = module.vpc.public_subnets[0]
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.jenkins_sg.id]
+  iam_instance_profile        = aws_iam_instance_profile.jenkins_profile.name
+  user_data                   = data.template_file.jenkins_userdata.rendered
+
+  tags = {
+    Name    = "${var.project_name}-jenkins"
+    Project = var.project_name
+  }
+
+  # Protect Jenkins from being recreated by minor changes/commits
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [user_data, ami]
+  }
+}
