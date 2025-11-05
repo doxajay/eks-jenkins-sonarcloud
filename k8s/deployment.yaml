@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acme-flask-app
+  labels:
+    app: acme-flask-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: acme-flask-app
+  template:
+    metadata:
+      labels:
+        app: acme-flask-app
+    spec:
+      containers:
+      - name: acme-flask-app
+        image: REPLACE_ECR_URI/acme-app-repo:latest
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-flask-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: acme-flask-app
+  ports:
+  - port: 80
+    targetPort: 5000
