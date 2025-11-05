@@ -48,21 +48,18 @@ unzip -q /tmp/sonar-scanner.zip -d /opt
 echo "export PATH=/opt/sonar-scanner-${SCANNER_VERSION}-linux/bin:\$PATH" >/etc/profile.d/sonarscanner.sh
 
 # -------- Preinstall key Jenkins plugins --------
-# We'll use jenkins-plugin-cli to install non-interactively
 PLUGINS="workflow-aggregator git aws-credentials docker-workflow sonar quality-gates job-dsl credentials-binding"
 echo "${PLUGINS}" | tr ' ' '\n' > /var/lib/jenkins/plugins.txt
 chown jenkins:jenkins /var/lib/jenkins/plugins.txt
 
 # Install CLI
 curl -fsSL -o /usr/local/bin/jenkins-plugin-cli https://github.com/jenkinsci/plugin-installation-manager-tool/releases/latest/download/jenkins-plugin-cli-2.12.15.jar
-# wrapper script
 cat >/usr/local/bin/jpcli <<'EOF'
 #!/usr/bin/env bash
 exec java -jar /usr/local/bin/jenkins-plugin-cli "$@"
 EOF
 chmod +x /usr/local/bin/jpcli
 
-# Stop Jenkins if started, install plugins, then start
 systemctl stop jenkins || true
 sudo -u jenkins bash -lc "/usr/local/bin/jpcli --plugin-file /var/lib/jenkins/plugins.txt --verbose"
 systemctl start jenkins
@@ -70,7 +67,7 @@ systemctl enable jenkins
 
 # -------- Disable setup wizard & create admin user --------
 mkdir -p /var/lib/jenkins/init.groovy.d
-cat >/var/lib/jenkins/init.groovy.d/basic-security.groovy <<EOF
+cat >/var/lib/jenkins/init.groovy.d/basic-security.groovy <<'EOF'
 import jenkins.model.*
 import hudson.security.*
 
@@ -78,7 +75,7 @@ def instance = Jenkins.get()
 instance.setInstallState(jenkins.install.InstallState.INITIAL_SETUP_COMPLETED)
 
 def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-hudsonRealm.createAccount("${ADMIN_USER}", "${ADMIN_PASS}")
+hudsonRealm.createAccount(System.getenv("ADMIN_USER"), System.getenv("ADMIN_PASS"))
 instance.setSecurityRealm(hudsonRealm)
 
 def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
@@ -91,7 +88,7 @@ chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d
 
 # -------- Optionally create credentials (SonarCloud & TFC) --------
 if [ "${CREATE_CREDS}" = "true" ]; then
-  cat >/var/lib/jenkins/init.groovy.d/credentials.groovy <<EOF
+  cat >/var/lib/jenkins/init.groovy.d/credentials.groovy <<'EOF'
 import jenkins.model.*
 import com.cloudbees.plugins.credentials.*
 import com.cloudbees.plugins.credentials.domains.*
@@ -112,11 +109,14 @@ def addOrUpdateSecret(id, desc, secret) {
   }
 }
 
-if ("${SONAR_TOKEN}".trim()) {
-  addOrUpdateSecret("sonar-token", "SonarCloud Token", "${SONAR_TOKEN}")
+def sonarToken = System.getenv("SONAR_TOKEN")
+def tfcToken = System.getenv("TFC_TOKEN")
+
+if (sonarToken?.trim()) {
+  addOrUpdateSecret("sonar-token", "SonarCloud Token", sonarToken)
 }
-if ("${TFC_TOKEN}".trim()) {
-  addOrUpdateSecret("tfc-token", "Terraform Cloud Token", "${TFC_TOKEN}")
+if (tfcToken?.trim()) {
+  addOrUpdateSecret("tfc-token", "Terraform Cloud Token", tfcToken)
 }
 
 Jenkins.instance.save()
