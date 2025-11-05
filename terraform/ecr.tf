@@ -18,20 +18,16 @@ resource "aws_ecr_repository" "acme_app_repo" {
   # Enable immutable image tags to prevent overwrites
   image_tag_mutability = "IMMUTABLE"
 
+  # Prevent accidental deletion (safe)
+  lifecycle {
+    prevent_destroy = false
+  }
+
   tags = {
     Project     = "EKS-Jenkins"
     Environment = "dev"
     ManagedBy   = "Terraform"
   }
-}
-
-#########################################################
-# Optional lifecycle rule to protect against accidental #
-# deletions but allow Terraform state updates safely    #
-#########################################################
-
-lifecycle {
-  prevent_destroy = false
 }
 
 #########################################################
