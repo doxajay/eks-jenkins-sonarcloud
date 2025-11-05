@@ -138,10 +138,7 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [user_data, ami]
-  }
+  
 }
 
 # -----------------------------------------------------
