@@ -70,32 +70,64 @@ resource "aws_iam_role" "jenkins_role" {
   })
 }
 
-# Attach permissions for ECR, EKS, CloudWatch, and SSM (supported policies)
+# -----------------------------------------------------
+# Attach AWS Managed Policies for Jenkins Access
+# -----------------------------------------------------
+# ECR (Push/Pull images)
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
+# EKS (Cluster interaction)
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+# EKS service-linked access
 resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
+# CloudWatch (logs and metrics)
 resource "aws_iam_role_policy_attachment" "jenkins_cloudwatch" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
+# SSM (for Session Manager / System updates)
 resource "aws_iam_role_policy_attachment" "jenkins_ssm" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Extra EKS permissions for kubectl (DescribeCluster, UpdateKubeconfig)
+resource "aws_iam_role_policy" "jenkins_extra_eks_policy" {
+  name = "${var.project_name}-jenkins-eks-extra"
+  role = aws_iam_role.jenkins_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "eks:DescribeCluster",
+          "eks:ListClusters",
+          "eks:ListNodegroups",
+          "eks:DescribeNodegroup"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------
+# Instance Profile for Jenkins EC2
+# -----------------------------------------------------
 resource "aws_iam_instance_profile" "jenkins_profile" {
   name = "${var.project_name}-jenkins-profile"
   role = aws_iam_role.jenkins_role.name
@@ -118,7 +150,7 @@ data "template_file" "jenkins_userdata" {
 }
 
 # -----------------------------------------------------
-# EC2 Instance for Jenkins (protected)
+# EC2 Instance for Jenkins (Terraform-managed)
 # -----------------------------------------------------
 resource "aws_instance" "jenkins" {
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -129,20 +161,11 @@ resource "aws_instance" "jenkins" {
   iam_instance_profile        = aws_iam_instance_profile.jenkins_profile.name
   user_data                   = data.template_file.jenkins_userdata.rendered
 
-  # Extra safety against console/API termination
   disable_api_termination = true
 
-  # ===== Protection so 'terraform apply' won't destroy/replace Jenkins =====
   lifecycle {
-    # Block any destroy (including replacements) unless you temporarily remove this.
     prevent_destroy = true
-
-    # Avoid unintended replacement when AMI updates or when user_data changes.
-    # (If you *intend* to rotate AMI or userdata, comment these out for that run.)
-    ignore_changes = [
-      ami,
-      user_data
-    ]
+    ignore_changes  = [ami, user_data]
   }
 
   tags = {
