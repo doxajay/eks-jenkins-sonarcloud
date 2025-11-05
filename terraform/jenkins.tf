@@ -79,7 +79,7 @@ resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-# ✅ Replaced deprecated AmazonEKSReadOnlyAccess
+# ✅ Replaced deprecated AmazonEKSReadOnlyAccess with these two
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -138,9 +138,9 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 
-  # lifecycle {
-   #  prevent_destroy = true
-   #  ignore_changes  = [user_data, ami]
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [user_data, ami]
   }
 }
 
