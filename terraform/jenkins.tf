@@ -2,7 +2,9 @@
 # Jenkins Server Provisioning (Terraform-managed EC2)
 # =====================================================
 
+# -----------------------------------------------------
 # Get latest Ubuntu 22.04 LTS AMI
+# -----------------------------------------------------
 data "aws_ami" "ubuntu_2204" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -57,23 +59,35 @@ resource "aws_iam_role" "jenkins_role" {
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Principal = { Service = "ec2.amazonaws.com" },
-      Action    = "sts:AssumeRole"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
   })
 }
 
+# -----------------------------------------------------
 # Attach permissions for ECR, EKS, CloudWatch, and SSM
+# -----------------------------------------------------
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-resource "aws_iam_role_policy_attachment" "jenkins_eks_ro" {
+# ✅ Replaced deprecated AmazonEKSReadOnlyAccess
+resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSReadOnlyAccess"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "jenkins_cw" {
@@ -124,13 +138,12 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 
-  # Prevent accidental destruction during repo updates
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [user_data, ami]
+  # lifecycle {
+   #  prevent_destroy = true
+   #  ignore_changes  = [user_data, ami]
   }
 }
 
 # -----------------------------------------------------
-# Outputs (declared in outputs.tf)
+# Outputs handled in outputs.tf
 # -----------------------------------------------------
