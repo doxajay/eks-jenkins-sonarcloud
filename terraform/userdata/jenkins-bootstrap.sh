@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-ChangeMe_123!}"
-CREATE_CREDS="${CREATE_CREDS:-false}"
-SONAR_TOKEN="${SONAR_TOKEN:-}"
-TFC_TOKEN="${TFC_TOKEN:-}"
-AWS_REGION="${AWS_REGION:-us-west-2}"
+ADMIN_USER="$${ADMIN_USER:-admin}"
+ADMIN_PASS="$${ADMIN_PASS:-ChangeMe_123!}"
+CREATE_CREDS="$${CREATE_CREDS:-false}"
+SONAR_TOKEN="$${SONAR_TOKEN:-}"
+TFC_TOKEN="$${TFC_TOKEN:-}"
+AWS_REGION="$${AWS_REGION:-us-west-2}"
 
 # -------- System prep --------
 apt-get update -y
@@ -49,7 +49,7 @@ echo "export PATH=/opt/sonar-scanner-${SCANNER_VERSION}-linux/bin:\$PATH" >/etc/
 
 # -------- Preinstall key Jenkins plugins --------
 PLUGINS="workflow-aggregator git aws-credentials docker-workflow sonar quality-gates job-dsl credentials-binding"
-echo "${PLUGINS}" | tr ' ' '\n' > /var/lib/jenkins/plugins.txt
+echo "$${PLUGINS}" | tr ' ' '\n' > /var/lib/jenkins/plugins.txt
 chown jenkins:jenkins /var/lib/jenkins/plugins.txt
 
 # Install CLI
@@ -60,6 +60,7 @@ exec java -jar /usr/local/bin/jenkins-plugin-cli "$@"
 EOF
 chmod +x /usr/local/bin/jpcli
 
+# Stop Jenkins if started, install plugins, then start
 systemctl stop jenkins || true
 sudo -u jenkins bash -lc "/usr/local/bin/jpcli --plugin-file /var/lib/jenkins/plugins.txt --verbose"
 systemctl start jenkins
@@ -67,7 +68,7 @@ systemctl enable jenkins
 
 # -------- Disable setup wizard & create admin user --------
 mkdir -p /var/lib/jenkins/init.groovy.d
-cat >/var/lib/jenkins/init.groovy.d/basic-security.groovy <<'EOF'
+cat >/var/lib/jenkins/init.groovy.d/basic-security.groovy <<EOF
 import jenkins.model.*
 import hudson.security.*
 
@@ -75,7 +76,7 @@ def instance = Jenkins.get()
 instance.setInstallState(jenkins.install.InstallState.INITIAL_SETUP_COMPLETED)
 
 def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-hudsonRealm.createAccount(System.getenv("ADMIN_USER"), System.getenv("ADMIN_PASS"))
+hudsonRealm.createAccount("$${ADMIN_USER}", "$${ADMIN_PASS}")
 instance.setSecurityRealm(hudsonRealm)
 
 def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
@@ -87,8 +88,8 @@ EOF
 chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d
 
 # -------- Optionally create credentials (SonarCloud & TFC) --------
-if [ "${CREATE_CREDS}" = "true" ]; then
-  cat >/var/lib/jenkins/init.groovy.d/credentials.groovy <<'EOF'
+if [ "$${CREATE_CREDS}" = "true" ]; then
+  cat >/var/lib/jenkins/init.groovy.d/credentials.groovy <<EOF
 import jenkins.model.*
 import com.cloudbees.plugins.credentials.*
 import com.cloudbees.plugins.credentials.domains.*
@@ -109,14 +110,11 @@ def addOrUpdateSecret(id, desc, secret) {
   }
 }
 
-def sonarToken = System.getenv("SONAR_TOKEN")
-def tfcToken = System.getenv("TFC_TOKEN")
-
-if (sonarToken?.trim()) {
-  addOrUpdateSecret("sonar-token", "SonarCloud Token", sonarToken)
+if ("$${SONAR_TOKEN}".trim()) {
+  addOrUpdateSecret("sonar-token", "SonarCloud Token", "$${SONAR_TOKEN}")
 }
-if (tfcToken?.trim()) {
-  addOrUpdateSecret("tfc-token", "Terraform Cloud Token", tfcToken)
+if ("$${TFC_TOKEN}".trim()) {
+  addOrUpdateSecret("tfc-token", "Terraform Cloud Token", "$${TFC_TOKEN}")
 }
 
 Jenkins.instance.save()
@@ -125,5 +123,5 @@ EOF
 fi
 
 # -------- Convenience banner --------
-echo "Jenkins is ready. Login: ${ADMIN_USER} / (password hidden)"
+echo "Jenkins is ready. Login: $${ADMIN_USER} / (password hidden)"
 echo "URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-hostname):8080/"
