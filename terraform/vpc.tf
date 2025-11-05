@@ -10,8 +10,9 @@ module "vpc" {
   public_subnets  = ["10.42.1.0/24", "10.42.2.0/24"]
   private_subnets = ["10.42.11.0/24", "10.42.12.0/24"]
 
-  enable_nat_gateway = true
-  single_nat_gateway = true
+  enable_nat_gateway       = true
+  single_nat_gateway       = true
+  map_public_ip_on_launch  = true   # ✅ ensures instances in public subnets get public IPs automatically
 
   tags = {
     Project = var.project_name
