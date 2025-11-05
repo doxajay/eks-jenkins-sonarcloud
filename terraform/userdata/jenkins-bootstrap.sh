@@ -37,15 +37,15 @@ chmod +x /usr/local/bin/kubectl
 
 # -------- Terraform (1.8.x) --------
 TF_VERSION="1.8.5"
-curl -sSL -o /tmp/terraform.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+curl -sSL -o /tmp/terraform.zip "https://releases.hashicorp.com/terraform/$${TF_VERSION}/terraform_$${TF_VERSION}_linux_amd64.zip"
 unzip -q /tmp/terraform.zip -d /usr/local/bin
 
 # -------- SonarScanner CLI --------
 SCANNER_VERSION="5.0.1.3006"
 curl -sSL -o /tmp/sonar-scanner.zip \
-  "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+  "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$${SCANNER_VERSION}-linux.zip"
 unzip -q /tmp/sonar-scanner.zip -d /opt
-echo "export PATH=/opt/sonar-scanner-${SCANNER_VERSION}-linux/bin:\$PATH" >/etc/profile.d/sonarscanner.sh
+echo "export PATH=/opt/sonar-scanner-$${SCANNER_VERSION}-linux/bin:\$PATH" >/etc/profile.d/sonarscanner.sh
 
 # -------- Preinstall key Jenkins plugins --------
 PLUGINS="workflow-aggregator git aws-credentials docker-workflow sonar quality-gates job-dsl credentials-binding"
