@@ -6,9 +6,9 @@ terraform {
   required_version = ">= 1.3.0"
 
   cloud {
-    organization = "POV-1"      # ✅ your Terraform Cloud organization
+    organization = "POV-1"                 # ✅ Your Terraform Cloud organization
     workspaces {
-      name = "eks-jenkins"      # ✅ your workspace name in Terraform Cloud
+      name = "eks-jenkins-sonarcloud"      # ✅ Your Terraform Cloud workspace name
     }
   }
 
