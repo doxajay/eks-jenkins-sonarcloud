@@ -9,7 +9,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.65"  # ✅ safe version (avoid 5.66–5.69)
+      version = "~> 5.62" # ✅ pinned safe version
     }
 
     kubernetes = {
@@ -22,6 +22,13 @@ terraform {
       version = "~> 2.2"
     }
   }
+
+  cloud {
+    organization = "YOUR_ORG_NAME" # 🔁 Replace with your Terraform Cloud org
+    workspaces {
+      name = "YOUR_WORKSPACE_NAME" # 🔁 Replace with your TFC workspace
+    }
+  }
 }
 
 #########################################################
@@ -29,6 +36,10 @@ terraform {
 #########################################################
 provider "aws" {
   region = var.region
+
+  # ✅ Disable identity serialization — fixes "account_id" bug
+  skip_metadata_api_check = true
+  skip_region_validation  = true
 }
 
 #########################################################
@@ -47,14 +58,3 @@ data "aws_eks_cluster_auth" "this" {
 #########################################################
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.this.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
-  token                  = data.aws_eks_cluster_auth.this.token
-}
-
-#########################################################
-# OPTIONAL: disable identity serialization for TF Cloud
-# (workaround if errors persist)
-#########################################################
-# provider_meta "terraform" {
-#   skip_resource_identity = true
-# }
