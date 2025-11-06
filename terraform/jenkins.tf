@@ -178,10 +178,6 @@ resource "aws_instance" "jenkins" {
 
   disable_api_termination = true
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [ami, user_data]
-  }
 
   tags = {
     Name    = "${var.project_name}-jenkins"
