@@ -1,22 +1,20 @@
 # =====================================================
-# EKS Cluster Provisioning (with Jenkins Access)
+# EKS Cluster Provisioning (with Jenkins Integration)
 # =====================================================
 
 # -----------------------------------------------------
-# IAM Role for EKS Control Plane
+# IAM Role for Control Plane
 # -----------------------------------------------------
 resource "aws_iam_role" "eks_cluster_role" {
   name = "${var.project_name}-eks-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = { Service = "eks.amazonaws.com" },
-        Action    = "sts:AssumeRole"
-      }
-    ]
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "eks.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
   })
 }
 
@@ -38,13 +36,11 @@ resource "aws_iam_role" "eks_node_role" {
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = { Service = "ec2.amazonaws.com" },
-        Action    = "sts:AssumeRole"
-      }
-    ]
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
   })
 }
 
@@ -108,7 +104,6 @@ resource "aws_eks_node_group" "default" {
   disk_size      = 20
 
   depends_on = [
-    aws_eks_cluster.main,
     aws_iam_role_policy_attachment.node_worker_policy,
     aws_iam_role_policy_attachment.node_cni_policy,
     aws_iam_role_policy_attachment.node_ecr_readonly
@@ -121,7 +116,7 @@ resource "aws_eks_node_group" "default" {
 }
 
 # -----------------------------------------------------
-# Kubernetes aws-auth ConfigMap (adds Jenkins EC2 role)
+# AWS Auth ConfigMap (grants Jenkins admin access)
 # -----------------------------------------------------
 resource "kubernetes_config_map" "aws_auth" {
   depends_on = [aws_eks_node_group.default]
