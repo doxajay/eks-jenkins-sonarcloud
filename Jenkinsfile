@@ -9,6 +9,7 @@ pipeline {
   }
 
   stages {
+
     stage('Checkout') {
       steps {
         checkout scm
@@ -55,7 +56,11 @@ pipeline {
     stage('Update kubeconfig for EKS') {
       steps {
         sh '''
-          aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name acme-eks
+          # Dynamically find cluster name (matches Terraform output)
+          CLUSTER_NAME=$(aws eks list-clusters --region ${AWS_DEFAULT_REGION} --query "clusters[0]" --output text)
+          echo "Detected EKS cluster: $CLUSTER_NAME"
+
+          aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name $CLUSTER_NAME
           kubectl get nodes
         '''
       }
@@ -64,7 +69,7 @@ pipeline {
     stage('Deploy to EKS') {
       steps {
         sh '''
-          # replace image placeholder in k8s manifest
+          # Replace image placeholder in deployment manifest
           sed -i "s|REPLACE_ECR_URI|${ECR_URI}|g" ${K8S_DIR}/deployment.yaml
 
           kubectl apply -f ${K8S_DIR}/deployment.yaml
