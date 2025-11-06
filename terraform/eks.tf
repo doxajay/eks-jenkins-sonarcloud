@@ -1,23 +1,26 @@
 # =====================================================
-# EKS Cluster Provisioning (with Jenkins Access)
+# EKS Cluster Provisioning
 # =====================================================
 
 # -----------------------------------------------------
-# IAM Role for EKS Control Plane
+# IAM Role for EKS Cluster
 # -----------------------------------------------------
 resource "aws_iam_role" "eks_cluster_role" {
   name = "${var.project_name}-eks-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Principal = { Service = "eks.amazonaws.com" },
-      Action    = "sts:AssumeRole"
-    }]
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = { Service = "eks.amazonaws.com" },
+        Action    = "sts:AssumeRole"
+      }
+    ]
   })
 }
 
+# Attach required policies for EKS control plane
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   role       = aws_iam_role.eks_cluster_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -29,29 +32,27 @@ resource "aws_iam_role_policy_attachment" "eks_service_policy" {
 }
 
 # -----------------------------------------------------
-# IAM Role for Worker Nodes
+# IAM Role for Node Group
 # -----------------------------------------------------
 resource "aws_iam_role" "eks_node_role" {
   name = "${var.project_name}-eks-node-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Principal = { Service = "ec2.amazonaws.com" },
-      Action    = "sts:AssumeRole"
-    }]
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = { Service = "ec2.amazonaws.com" },
+        Action    = "sts:AssumeRole"
+      }
+    ]
   })
 }
 
+# Attach managed policies required by worker nodes
 resource "aws_iam_role_policy_attachment" "node_worker_policy" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-}
-
-resource "aws_iam_role_policy_attachment" "node_cni_policy" {
-  role       = aws_iam_role.eks_node_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
 resource "aws_iam_role_policy_attachment" "node_ecr_readonly" {
@@ -59,34 +60,37 @@ resource "aws_iam_role_policy_attachment" "node_ecr_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+resource "aws_iam_role_policy_attachment" "node_cni_policy" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
 # -----------------------------------------------------
-# EKS Cluster
+# Create the EKS Cluster
 # -----------------------------------------------------
 resource "aws_eks_cluster" "main" {
   name     = "${var.project_name}-eks"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
   vpc_config {
-    subnet_ids              = module.vpc.public_subnets
-    endpoint_public_access  = true
-    endpoint_private_access = false
+    subnet_ids = module.vpc.public_subnets
   }
 
   version = "1.30"
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_policy,
-    aws_iam_role_policy_attachment.eks_service_policy
-  ]
 
   tags = {
     Name    = "${var.project_name}-eks"
     Project = var.project_name
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_iam_role_policy_attachment.eks_service_policy
+  ]
 }
 
 # -----------------------------------------------------
-# Managed Node Group
+# Node Group (Managed EC2 Workers)
 # -----------------------------------------------------
 resource "aws_eks_node_group" "default" {
   cluster_name    = aws_eks_cluster.main.name
@@ -101,35 +105,32 @@ resource "aws_eks_node_group" "default" {
   }
 
   instance_types = ["t3.medium"]
-  disk_size      = 20
-
-  depends_on = [
-    aws_eks_cluster.main,
-    aws_iam_role_policy_attachment.node_worker_policy,
-    aws_iam_role_policy_attachment.node_cni_policy,
-    aws_iam_role_policy_attachment.node_ecr_readonly
-  ]
 
   tags = {
     Name    = "${var.project_name}-node-group"
     Project = var.project_name
   }
+
+  depends_on = [
+    aws_eks_cluster.main
+  ]
 }
 
 # -----------------------------------------------------
-# Kubernetes aws-auth ConfigMap
+# Allow Jenkins IAM Role to access cluster
 # -----------------------------------------------------
+# (This assumes you defined aws_iam_role.jenkins_role in jenkins.tf)
+
 resource "kubernetes_config_map" "aws_auth" {
+  depends_on = [
+    aws_eks_node_group.default,
+    aws_iam_role.eks_node_role
+  ]
+
   metadata {
     name      = "aws-auth"
     namespace = "kube-system"
   }
-
-  depends_on = [
-    aws_eks_cluster.main,
-    aws_eks_node_group.default,
-    aws_iam_role.eks_node_role
-  ]
 
   data = {
     mapRoles = yamlencode([
@@ -140,4 +141,24 @@ resource "kubernetes_config_map" "aws_auth" {
       },
       {
         rolearn  = aws_iam_role.jenkins_role.arn
-        usernam
+        username = "jenkins"
+        groups   = ["system:masters"]
+      }
+    ])
+  }
+}
+
+# -----------------------------------------------------
+# Outputs
+# -----------------------------------------------------
+output "eks_cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "eks_cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
+
+output "eks_cluster_role_arn" {
+  value = aws_iam_role.eks_cluster_role.arn
+}
