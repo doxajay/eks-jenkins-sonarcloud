@@ -1,6 +1,5 @@
 #########################################################
-# PROVIDERS CONFIGURATION
-# Stable for AWS, Kubernetes, Template, and Terraform Cloud
+# PROVIDERS CONFIGURATION (Local execution)
 #########################################################
 
 terraform {
@@ -22,13 +21,6 @@ terraform {
       version = "~> 2.2"
     }
   }
-
-  cloud {
-    organization = "POV-1"     # ✅ Your Terraform Cloud organization
-    workspaces {
-      name = "YOUR_WORKSPACE_NAME"  # 🔁 Replace with your actual workspace name
-    }
-  }
 }
 
 #########################################################
@@ -42,7 +34,6 @@ provider "aws" {
 
 #########################################################
 # EKS CLUSTER DATA SOURCES
-# Used to configure Kubernetes provider below
 #########################################################
 data "aws_eks_cluster" "this" {
   name = "${var.project_name}-eks"
