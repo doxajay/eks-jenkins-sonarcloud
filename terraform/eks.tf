@@ -1,5 +1,5 @@
 # =====================================================
-# EKS Cluster Provisioning
+# EKS Cluster Provisioning (Stable Version)
 # =====================================================
 
 # -----------------------------------------------------
@@ -73,10 +73,13 @@ resource "aws_eks_cluster" "main" {
   role_arn = aws_iam_role.eks_cluster_role.arn
 
   vpc_config {
-    subnet_ids = module.vpc.public_subnets
+    subnet_ids              = module.vpc.public_subnets
+    endpoint_public_access  = true
+    endpoint_private_access = false
   }
 
-  version = "1.30" # choose stable version
+  version = "1.30"
+
   tags = {
     Name    = "${var.project_name}-eks"
     Project = var.project_name
@@ -104,6 +107,7 @@ resource "aws_eks_node_group" "default" {
   }
 
   instance_types = ["t3.medium"]
+  disk_size      = 20
 
   tags = {
     Name    = "${var.project_name}-node-group"
@@ -111,7 +115,10 @@ resource "aws_eks_node_group" "default" {
   }
 
   depends_on = [
-    aws_eks_cluster.main
+    aws_eks_cluster.main,
+    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly
   ]
 }
 
@@ -119,13 +126,21 @@ resource "aws_eks_node_group" "default" {
 # Outputs
 # -----------------------------------------------------
 output "eks_cluster_name" {
-  value = aws_eks_cluster.main.name
+  description = "EKS cluster name"
+  value       = aws_eks_cluster.main.name
 }
 
 output "eks_cluster_endpoint" {
-  value = aws_eks_cluster.main.endpoint
+  description = "EKS cluster endpoint URL"
+  value       = aws_eks_cluster.main.endpoint
 }
 
 output "eks_cluster_role_arn" {
-  value = aws_iam_role.eks_cluster_role.arn
+  description = "EKS control plane IAM role ARN"
+  value       = aws_iam_role.eks_cluster_role.arn
+}
+
+output "eks_node_role_arn" {
+  description = "EKS worker node IAM role ARN"
+  value       = aws_iam_role.eks_node_role.arn
 }
