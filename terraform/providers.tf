@@ -1,14 +1,21 @@
 #########################################################
-# PROVIDERS CONFIGURATION (Local execution)
+# PROVIDERS CONFIGURATION — Terraform Cloud (Remote Backend)
 #########################################################
 
 terraform {
   required_version = ">= 1.3.0"
 
+  cloud {
+    organization = "POV-1"      # ✅ your Terraform Cloud organization
+    workspaces {
+      name = "eks-jenkins"      # ✅ your workspace name in Terraform Cloud
+    }
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.57"
+      version = "~> 5.50"
     }
 
     kubernetes = {
@@ -27,13 +34,11 @@ terraform {
 # AWS PROVIDER
 #########################################################
 provider "aws" {
-  region                  = var.region
-  skip_metadata_api_check = true
-  skip_region_validation  = true
+  region = var.region
 }
 
 #########################################################
-# EKS CLUSTER DATA SOURCES
+# DATA SOURCES — for EKS authentication
 #########################################################
 data "aws_eks_cluster" "this" {
   name = "${var.project_name}-eks"
@@ -44,7 +49,7 @@ data "aws_eks_cluster_auth" "this" {
 }
 
 #########################################################
-# KUBERNETES PROVIDER (connects to EKS)
+# KUBERNETES PROVIDER
 #########################################################
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.this.endpoint
