@@ -62,8 +62,8 @@ resource "aws_iam_role" "jenkins_role" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect = "Allow"
-        Principal = { Service = "ec2.amazonaws.com" }
+        Effect = "Allow",
+        Principal = { Service = "ec2.amazonaws.com" },
         Action    = "sts:AssumeRole"
       }
     ]
@@ -73,13 +73,13 @@ resource "aws_iam_role" "jenkins_role" {
 # -----------------------------------------------------
 # Attach AWS Managed Policies for Jenkins Access
 # -----------------------------------------------------
-# ECR (Push/Pull images)
+# ECR access (push/pull Docker images)
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-# EKS (Cluster interaction)
+# EKS access for cluster interaction
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -91,38 +91,22 @@ resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
-# CloudWatch (logs and metrics)
+# CloudWatch (for logs and metrics)
 resource "aws_iam_role_policy_attachment" "jenkins_cloudwatch" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
-# SSM (for Session Manager / System updates)
+# SSM (Session Manager and OS updates)
 resource "aws_iam_role_policy_attachment" "jenkins_ssm" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Extra EKS permissions for kubectl (DescribeCluster, UpdateKubeconfig)
-resource "aws_iam_role_policy" "jenkins_extra_eks_policy" {
-  name = "${var.project_name}-jenkins-eks-extra"
-  role = aws_iam_role.jenkins_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "eks:DescribeCluster",
-          "eks:ListClusters",
-          "eks:ListNodegroups",
-          "eks:DescribeNodegroup"
-        ],
-        Resource = "*"
-      }
-    ]
-  })
+# ✅ Full EKS access (required for kubectl & aws-auth updates)
+resource "aws_iam_role_policy_attachment" "jenkins_eks_admin" {
+  role       = aws_iam_role.jenkins_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFullAccess"
 }
 
 # -----------------------------------------------------
@@ -150,7 +134,7 @@ data "template_file" "jenkins_userdata" {
 }
 
 # -----------------------------------------------------
-# EC2 Instance for Jenkins (Terraform-managed)
+# EC2 Instance for Jenkins (Protected from Destroy)
 # -----------------------------------------------------
 resource "aws_instance" "jenkins" {
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -161,6 +145,7 @@ resource "aws_instance" "jenkins" {
   iam_instance_profile        = aws_iam_instance_profile.jenkins_profile.name
   user_data                   = data.template_file.jenkins_userdata.rendered
 
+  # Safety guard against accidental deletion
   disable_api_termination = true
 
   lifecycle {
@@ -173,7 +158,3 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 }
-
-# -----------------------------------------------------
-# Outputs handled in outputs.tf
-# -----------------------------------------------------
