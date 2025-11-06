@@ -116,10 +116,14 @@ resource "aws_eks_node_group" "default" {
 }
 
 # -----------------------------------------------------
-# AWS Auth ConfigMap (grants Jenkins admin access)
+# Kubernetes aws-auth ConfigMap (adds Jenkins EC2 role)
 # -----------------------------------------------------
 resource "kubernetes_config_map" "aws_auth" {
-  depends_on = [aws_eks_node_group.default]
+  # Wait until nodegroup exists and the provider can reach the API
+  depends_on = [
+    aws_eks_node_group.default,
+    aws_eks_cluster.main
+  ]
 
   metadata {
     name      = "aws-auth"
@@ -164,3 +168,4 @@ output "eks_node_role_arn" {
   description = "EKS worker node IAM role ARN"
   value       = aws_iam_role.eks_node_role.arn
 }
+
