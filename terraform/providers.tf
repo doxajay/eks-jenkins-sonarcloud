@@ -17,18 +17,20 @@ provider "aws" {
   region = var.region
 }
 
+# Use data sources to look up the EKS cluster AFTER creation
 data "aws_eks_cluster" "this" {
-  name       = aws_eks_cluster.main.name
-  depends_on = [aws_eks_cluster.main]
+  name = "${var.project_name}-eks"
 }
 
 data "aws_eks_cluster_auth" "this" {
-  name       = aws_eks_cluster.main.name
-  depends_on = [aws_eks_cluster.main]
+  name = "${var.project_name}-eks"
 }
 
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.this.endpoint
   token                  = data.aws_eks_cluster_auth.this.token
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+
+  # Optional — ensure TF waits until the cluster exists
+  alias = "eks"
 }
