@@ -9,24 +9,24 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.63.0" # ✅ use a stable and current AWS provider
+      version = "~> 5.57"
     }
 
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.31.0"
+      version = "~> 2.31"
     }
 
     template = {
       source  = "hashicorp/template"
-      version = "~> 2.2.0"
+      version = "~> 2.2"
     }
   }
 
   cloud {
-    organization = "YOUR_ORG_NAME"      # 🔁 Replace with your Terraform Cloud org
+    organization = "POV-1"     # ✅ Your Terraform Cloud organization
     workspaces {
-      name = "YOUR_WORKSPACE_NAME"      # 🔁 Replace with your Terraform Cloud workspace
+      name = "YOUR_WORKSPACE_NAME"  # 🔁 Replace with your actual workspace name
     }
   }
 }
@@ -35,10 +35,9 @@ terraform {
 # AWS PROVIDER
 #########################################################
 provider "aws" {
-  region                      = var.region
-  skip_metadata_api_check      = true
-  skip_credentials_validation  = true
-  skip_requesting_account_id   = true   # ✅ prevents “unsupported attribute account_id” bug
+  region                  = var.region
+  skip_metadata_api_check = true
+  skip_region_validation  = true
 }
 
 #########################################################
@@ -47,18 +46,10 @@ provider "aws" {
 #########################################################
 data "aws_eks_cluster" "this" {
   name = "${var.project_name}-eks"
-
-  depends_on = [
-    aws_eks_cluster.main
-  ]
 }
 
 data "aws_eks_cluster_auth" "this" {
   name = data.aws_eks_cluster.this.name
-
-  depends_on = [
-    aws_eks_cluster.main
-  ]
 }
 
 #########################################################
@@ -68,8 +59,4 @@ provider "kubernetes" {
   host                   = data.aws_eks_cluster.this.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.this.token
-
-  experiments {
-    manifest_resource = true
-  }
 }
