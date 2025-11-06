@@ -70,42 +70,34 @@ resource "aws_iam_role" "jenkins_role" {
   })
 }
 
-# -----------------------------------------------------
-# Attach AWS Managed Policies for Jenkins Access
-# -----------------------------------------------------
-# ECR (Push/Pull images)
+# Attach AWS managed policies Jenkins needs
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-# EKS (Cluster interaction)
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-# EKS service-linked access
 resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
-# CloudWatch (logs and metrics)
 resource "aws_iam_role_policy_attachment" "jenkins_cloudwatch" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
-# SSM (for Session Manager / System updates)
 resource "aws_iam_role_policy_attachment" "jenkins_ssm" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 # -----------------------------------------------------
-# Custom Inline Policy for Jenkins to access EKS safely
-# (replaces deprecated AmazonEKSFullAccess)
+# Custom Inline Policy for Safe EKS Access
 # -----------------------------------------------------
 resource "aws_iam_role_policy" "jenkins_eks_access" {
   name = "${var.project_name}-jenkins-eks-access"
@@ -161,11 +153,10 @@ resource "aws_iam_instance_profile" "jenkins_profile" {
 }
 
 # -----------------------------------------------------
-# Jenkins User Data Template
+# Jenkins EC2
 # -----------------------------------------------------
 data "template_file" "jenkins_userdata" {
   template = file("${path.module}/userdata/jenkins-bootstrap.sh")
-
   vars = {
     ADMIN_USER   = var.jenkins_admin_username
     ADMIN_PASS   = var.jenkins_admin_password
@@ -176,9 +167,6 @@ data "template_file" "jenkins_userdata" {
   }
 }
 
-# -----------------------------------------------------
-# EC2 Instance for Jenkins (Terraform-managed)
-# -----------------------------------------------------
 resource "aws_instance" "jenkins" {
   ami                         = data.aws_ami.ubuntu_2204.id
   instance_type               = var.jenkins_instance_type
@@ -200,7 +188,3 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 }
-
-# -----------------------------------------------------
-# Outputs handled in outputs.tf
-# -----------------------------------------------------
