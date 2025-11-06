@@ -1,9 +1,9 @@
 # =====================================================
-# EKS Cluster Provisioning (Stable Version)
+# EKS Cluster Provisioning (with Jenkins Access)
 # =====================================================
 
 # -----------------------------------------------------
-# IAM Role for EKS Cluster
+# IAM Role for EKS Control Plane
 # -----------------------------------------------------
 resource "aws_iam_role" "eks_cluster_role" {
   name = "${var.project_name}-eks-cluster-role"
@@ -20,7 +20,6 @@ resource "aws_iam_role" "eks_cluster_role" {
   })
 }
 
-# Attach required policies for EKS control plane
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   role       = aws_iam_role.eks_cluster_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -32,7 +31,7 @@ resource "aws_iam_role_policy_attachment" "eks_service_policy" {
 }
 
 # -----------------------------------------------------
-# IAM Role for Node Group
+# IAM Role for Worker Nodes
 # -----------------------------------------------------
 resource "aws_iam_role" "eks_node_role" {
   name = "${var.project_name}-eks-node-role"
@@ -49,24 +48,23 @@ resource "aws_iam_role" "eks_node_role" {
   })
 }
 
-# Attach managed policies required by worker nodes
-resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
+resource "aws_iam_role_policy_attachment" "node_worker_policy" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOnly" {
-  role       = aws_iam_role.eks_node_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_iam_role_policy_attachment" "node_AmazonEKS_CNI_Policy" {
+resource "aws_iam_role_policy_attachment" "node_cni_policy" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
+resource "aws_iam_role_policy_attachment" "node_ecr_readonly" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
 # -----------------------------------------------------
-# Create the EKS Cluster
+# EKS Cluster
 # -----------------------------------------------------
 resource "aws_eks_cluster" "main" {
   name     = "${var.project_name}-eks"
@@ -92,7 +90,7 @@ resource "aws_eks_cluster" "main" {
 }
 
 # -----------------------------------------------------
-# Node Group (Managed EC2 Workers)
+# Managed Node Group
 # -----------------------------------------------------
 resource "aws_eks_node_group" "default" {
   cluster_name    = aws_eks_cluster.main.name
@@ -109,17 +107,44 @@ resource "aws_eks_node_group" "default" {
   instance_types = ["t3.medium"]
   disk_size      = 20
 
+  depends_on = [
+    aws_eks_cluster.main,
+    aws_iam_role_policy_attachment.node_worker_policy,
+    aws_iam_role_policy_attachment.node_cni_policy,
+    aws_iam_role_policy_attachment.node_ecr_readonly
+  ]
+
   tags = {
     Name    = "${var.project_name}-node-group"
     Project = var.project_name
   }
+}
 
-  depends_on = [
-    aws_eks_cluster.main,
-    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly
-  ]
+# -----------------------------------------------------
+# Kubernetes aws-auth ConfigMap (adds Jenkins EC2 role)
+# -----------------------------------------------------
+resource "kubernetes_config_map" "aws_auth" {
+  depends_on = [aws_eks_node_group.default]
+
+  metadata {
+    name      = "aws-auth"
+    namespace = "kube-system"
+  }
+
+  data = {
+    mapRoles = yamlencode([
+      {
+        rolearn  = aws_iam_role.eks_node_role.arn
+        username = "system:node:{{EC2PrivateDNSName}}"
+        groups   = ["system:bootstrappers", "system:nodes"]
+      },
+      {
+        rolearn  = aws_iam_role.jenkins_role.arn
+        username = "jenkins"
+        groups   = ["system:masters"]
+      }
+    ])
+  }
 }
 
 # -----------------------------------------------------
