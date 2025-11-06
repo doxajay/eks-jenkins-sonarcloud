@@ -73,13 +73,13 @@ resource "aws_iam_role" "jenkins_role" {
 # -----------------------------------------------------
 # Attach AWS Managed Policies for Jenkins Access
 # -----------------------------------------------------
-# ECR access (push/pull Docker images)
+# ECR (Push/Pull images)
 resource "aws_iam_role_policy_attachment" "jenkins_ecr" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
-# EKS access for cluster interaction
+# EKS (Cluster interaction)
 resource "aws_iam_role_policy_attachment" "jenkins_eks_cluster" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -91,22 +91,65 @@ resource "aws_iam_role_policy_attachment" "jenkins_eks_service" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
 }
 
-# CloudWatch (for logs and metrics)
+# CloudWatch (logs and metrics)
 resource "aws_iam_role_policy_attachment" "jenkins_cloudwatch" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 }
 
-# SSM (Session Manager and OS updates)
+# SSM (for Session Manager / System updates)
 resource "aws_iam_role_policy_attachment" "jenkins_ssm" {
   role       = aws_iam_role.jenkins_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# ✅ Full EKS access (required for kubectl & aws-auth updates)
-resource "aws_iam_role_policy_attachment" "jenkins_eks_admin" {
-  role       = aws_iam_role.jenkins_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFullAccess"
+# -----------------------------------------------------
+# Custom Inline Policy for Jenkins to access EKS safely
+# (replaces deprecated AmazonEKSFullAccess)
+# -----------------------------------------------------
+resource "aws_iam_role_policy" "jenkins_eks_access" {
+  name = "${var.project_name}-jenkins-eks-access"
+  role = aws_iam_role.jenkins_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid    = "EKSDescribeAndList",
+        Effect = "Allow",
+        Action = [
+          "eks:ListClusters",
+          "eks:DescribeCluster",
+          "eks:ListNodegroups",
+          "eks:DescribeNodegroup",
+          "eks:ListUpdates",
+          "eks:DescribeUpdate"
+        ],
+        Resource = "*"
+      },
+      {
+        Sid    = "EKSClusterAccess",
+        Effect = "Allow",
+        Action = [
+          "eks:AccessKubernetesApi",
+          "eks:DescribeAddonVersions",
+          "eks:ListAddons",
+          "eks:DescribeAddon"
+        ],
+        Resource = "*"
+      },
+      {
+        Sid    = "EKSNetworking",
+        Effect = "Allow",
+        Action = [
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeSecurityGroups"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 # -----------------------------------------------------
@@ -134,7 +177,7 @@ data "template_file" "jenkins_userdata" {
 }
 
 # -----------------------------------------------------
-# EC2 Instance for Jenkins (Protected from Destroy)
+# EC2 Instance for Jenkins (Terraform-managed)
 # -----------------------------------------------------
 resource "aws_instance" "jenkins" {
   ami                         = data.aws_ami.ubuntu_2204.id
@@ -145,7 +188,6 @@ resource "aws_instance" "jenkins" {
   iam_instance_profile        = aws_iam_instance_profile.jenkins_profile.name
   user_data                   = data.template_file.jenkins_userdata.rendered
 
-  # Safety guard against accidental deletion
   disable_api_termination = true
 
   lifecycle {
@@ -158,3 +200,7 @@ resource "aws_instance" "jenkins" {
     Project = var.project_name
   }
 }
+
+# -----------------------------------------------------
+# Outputs handled in outputs.tf
+# -----------------------------------------------------
